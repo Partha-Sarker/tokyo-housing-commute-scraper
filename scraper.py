@@ -4,6 +4,7 @@ import random
 import re
 import time
 import urllib.parse
+from datetime import datetime
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -303,21 +304,34 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False, dela
     return enriched
 
 
-def resolve_output_path(output_dir: str, filename: str, explicit_output: str = None) -> str:
+def resolve_output_path(
+    output_dir: str, 
+    filename: str, 
+    explicit_output: str = None, 
+    add_timestamp: bool = True
+) -> str:
     """
-    Resolves the final target CSV file path and ensures the parent directory exists.
+    Resolves the final target CSV file path with a readable timestamp suffix and ensures the parent directory exists.
     """
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    
     if explicit_output:
-        target_path = explicit_output
-        target_dir = os.path.dirname(target_path)
+        target_dir = os.path.dirname(explicit_output)
+        base_file = os.path.basename(explicit_output)
+        name, ext = os.path.splitext(base_file)
+        ext = ext if ext else ".csv"
+        final_name = f"{name}_{timestamp}{ext}" if add_timestamp else f"{name}{ext}"
+        
         if target_dir:
             os.makedirs(target_dir, exist_ok=True)
-        return target_path
+            return os.path.join(target_dir, final_name)
+        return final_name
 
     os.makedirs(output_dir, exist_ok=True)
-    if not filename.lower().endswith(".csv"):
-        filename = f"{filename}.csv"
-    return os.path.join(output_dir, filename)
+    name, ext = os.path.splitext(filename)
+    ext = ext if ext else ".csv"
+    final_name = f"{name}_{timestamp}{ext}" if add_timestamp else f"{name}{ext}"
+    return os.path.join(output_dir, final_name)
 
 
 def main():
@@ -348,17 +362,27 @@ def main():
     )
     parser.add_argument(
         "--name", "-n",
-        default="listings.csv",
-        help="Filename for the output CSV (e.g. 'setagaya' or 'listings.csv')."
+        default="listings",
+        help="Base filename for the output CSV (e.g. 'setagaya' or 'listings'). Timestamp will be appended."
+    )
+    parser.add_argument(
+        "--no-timestamp",
+        action="store_true",
+        help="Disable appending timestamp suffix to the output filename."
     )
     parser.add_argument(
         "--output", "-o",
         default=None,
-        help="Optional full output path (overrides --dir and --name)."
+        help="Optional explicit full output path (overrides --dir and --name)."
     )
     args = parser.parse_args()
     
-    target_filepath = resolve_output_path(args.dir, args.name, args.output)
+    target_filepath = resolve_output_path(
+        output_dir=args.dir, 
+        filename=args.name, 
+        explicit_output=args.output,
+        add_timestamp=not args.no_timestamp
+    )
     
     # 1. Scrape listing overview from CLI search URL with infinite scroll
     basic_listings = scrape_search_results(search_url=args.url, headful=args.headful)

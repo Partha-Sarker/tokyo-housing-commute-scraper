@@ -12,8 +12,8 @@ An automated Python scraper for housing rent listings from [Xross House](https:/
 - [Usage Examples](#usage-examples)
   - [1. Default Run](#1-default-run)
   - [2. Custom Search / Filter URL](#2-custom-search--filter-url)
-  - [3. Adjust Delay to Avoid Rate Limits](#3-adjust-delay-to-avoid-rate-limits)
-  - [4. Custom Output Directory & Filename](#4-custom-output-directory--filename)
+  - [3. Custom Output Directory & Filename (with Timestamps)](#3-custom-output-directory--filename-with-timestamps)
+  - [4. Adjust Delay to Avoid Rate Limits](#4-adjust-delay-to-avoid-rate-limits)
   - [5. Visual / Headful Mode](#5-visual--headful-mode)
   - [6. Full Pipeline with Combined Arguments](#6-full-pipeline-with-combined-arguments)
 - [Output CSV Data Schema](#output-csv-data-schema)
@@ -23,6 +23,7 @@ An automated Python scraper for housing rent listings from [Xross House](https:/
 
 ## Features
 
+- **Automatic Timestamp Suffixes**: Filenames are automatically suffixed with readable timestamps (e.g. `data/setagaya_2026-08-29_23-18-01.csv`) so previous scrape runs are never overwritten.
 - **Automatic Infinite Scroll & Pagination**: Automatically scrolls and loads 100% of available listings, matching the total count reported by the portal.
 - **Polite Crawling & Anti-Blocking**: Built-in polite delay (`--delay`) and exponential backoff retry logic on `429`/`403` or network timeouts.
 - **Custom Search URLs**: Pass any search or filter URL from Xross House via `--url`.
@@ -34,7 +35,7 @@ An automated Python scraper for housing rent listings from [Xross House](https:/
   - Queries **OSRM Foot Routing** to compute exact pedestrian walking distance and travel duration to **Rakuten Crimson House** (`35.6104929, 139.6301311`).
   - Generates clickable Google Maps Walking Directions links.
 - **Headful & Headless Modes**: Run silently in the background (default) or watch the browser navigate live with `--headful`.
-- **Flexible Output Management**: Specify custom directories (`--dir`) and filenames (`--name`), with automatic directory creation and extension resolution.
+- **Flexible Output Management**: Specify custom directories (`--dir`) and base names (`--name`), with automatic directory creation and extension resolution.
 
 ---
 
@@ -62,9 +63,10 @@ playwright install chromium
 | Argument | Shorthand | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `--url` | `-u` | *Default Setagaya search URL* | Target Xross House search/filter URL to scrape. |
-| `--delay` | `-w` | `1.5` | Polite delay in seconds between detail page requests (with random jitter) to avoid rate limits. |
+| `--name` | `-n` | `listings` | Base filename for the output CSV (e.g. `setagaya` or `listings`). Readable timestamp will be appended before `.csv`. |
 | `--dir` | `-d` | `data` | Directory where the CSV file will be saved. Automatically created if it does not exist. |
-| `--name` | `-n` | `listings.csv` | Output CSV filename (e.g. `setagaya_rent` or `listings.csv`). `.csv` extension is added automatically if omitted. |
+| `--no-timestamp` | | `False` | Disable appending timestamp suffix to output filename (e.g. to keep static name). |
+| `--delay` | `-w` | `1.5` | Polite delay in seconds between detail page requests (with random jitter) to avoid rate limits. |
 | `--output` | `-o` | `None` | Optional explicit full output path (e.g. `reports/custom.csv`). Overrides `--dir` and `--name`. |
 | `--headful` | | `False` | Launches a visible Chromium browser window so you can watch the scraper live. |
 | `--help` | `-h` | | Displays the help message with all available options. |
@@ -79,34 +81,35 @@ source venv/bin/activate
 ```
 
 ### 1. Default Run
-Scrapes the default search URL and saves to `data/listings.csv`:
+Scrapes the default search URL and saves to `data/listings_YYYY-MM-DD_HH-MM-SS.csv`:
 ```bash
 python scraper.py
 ```
 
-### 2. Custom Search / Filter URL
-Pass any custom filter URL (e.g. multi-city search, budget filters, specific stations):
+### 2. Custom Output Directory & Filename
 ```bash
-python scraper.py --url "https://x-house.co.jp/en/fee/?rent_min=&rent_max=80000&gender=no-female&city=%2C67%2C66%2C59..."
+# Saves to data/setagaya_under_80k_YYYY-MM-DD_HH-MM-SS.csv
+python scraper.py --name setagaya_under_80k
+
+# Saves to reports/august_search_YYYY-MM-DD_HH-MM-SS.csv (creates reports/ folder automatically)
+python scraper.py --dir reports --name august_search
+
+# Disable timestamp suffix if you prefer a static filename (data/listings.csv):
+python scraper.py --no-timestamp
 ```
 
-### 3. Adjust Delay to Avoid Rate Limits
+### 3. Custom Search / Filter URL
+Pass any custom filter URL (e.g. multi-city search, budget filters, specific stations):
+```bash
+python scraper.py \
+  --url "https://x-house.co.jp/en/fee/?rent_min=&rent_max=80000&gender=no-female&city=%2C67%2C66%2C59..." \
+  --name multi_city_search
+```
+
+### 4. Adjust Delay to Avoid Rate Limits
 Customize the wait time between individual property page requests:
 ```bash
 python scraper.py --delay 2.0
-```
-
-### 4. Custom Output Directory & Filename
-Save to a specific folder and file name:
-```bash
-# Saves to data/multi_city_rent.csv
-python scraper.py --name multi_city_rent
-
-# Saves to reports/august_search.csv (creates the reports/ folder automatically)
-python scraper.py --dir reports --name august_search
-
-# Direct full path
-python scraper.py --output /path/to/custom_output.csv
 ```
 
 ### 5. Visual / Headful Mode
@@ -158,5 +161,6 @@ The generated CSV file contains the following fields:
    - Calculates pedestrian walking distance and walking duration to **Rakuten Crimson House** using the OpenStreetMap OSRM Foot Routing engine.
    - Constructs direct Google Maps walking navigation URLs.
 
-3. **Step 3 — CSV Export**:
+3. **Step 3 — CSV Export with Timestamps**:
+   - Appends a readable timestamp (e.g. `YYYY-MM-DD_HH-MM-SS`) to ensure runs are versioned and never overwritten.
    - Formats and exports the dataset into UTF-8 encoded CSV in the specified directory.
