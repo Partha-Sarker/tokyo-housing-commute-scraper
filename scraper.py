@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 import urllib.parse
 import pandas as pd
@@ -153,7 +154,6 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False):
                     if jp_address:
                         gmap_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(jp_address)}"
                 
-                # Walking route calculation
                 dist_str, dur_str = calculate_walking_route(jp_address, session)
                 walk_dir_url = (
                     f"https://www.google.com/maps/dir/?api=1&origin={urllib.parse.quote(jp_address)}"
@@ -192,7 +192,6 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False):
                     if jp_address:
                         gmap_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(jp_address)}"
                 
-                # Walking route calculation
                 dist_str, dur_str = calculate_walking_route(jp_address, session)
                 walk_dir_url = (
                     f"https://www.google.com/maps/dir/?api=1&origin={urllib.parse.quote(jp_address)}"
@@ -229,6 +228,23 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False):
     return enriched
 
 
+def resolve_output_path(output_dir: str, filename: str, explicit_output: str = None) -> str:
+    """
+    Resolves the final target CSV file path and ensures the parent directory exists.
+    """
+    if explicit_output:
+        target_path = explicit_output
+        target_dir = os.path.dirname(target_path)
+        if target_dir:
+            os.makedirs(target_dir, exist_ok=True)
+        return target_path
+
+    os.makedirs(output_dir, exist_ok=True)
+    if not filename.lower().endswith(".csv"):
+        filename = f"{filename}.csv"
+    return os.path.join(output_dir, filename)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Housing Scraper for Xross House with Walking Distance calculation to Rakuten Crimson House.",
@@ -245,11 +261,23 @@ def main():
         help="Launch visible browser window to watch scraping in real-time."
     )
     parser.add_argument(
-        "--output", "-o",
+        "--dir", "-d",
+        default="data",
+        help="Directory to save the output CSV."
+    )
+    parser.add_argument(
+        "--name", "-n",
         default="listings.csv",
-        help="Target CSV file path."
+        help="Filename for the output CSV (e.g. 'setagaya' or 'listings.csv')."
+    )
+    parser.add_argument(
+        "--output", "-o",
+        default=None,
+        help="Optional full output path (overrides --dir and --name)."
     )
     args = parser.parse_args()
+    
+    target_filepath = resolve_output_path(args.dir, args.name, args.output)
     
     # 1. Scrape listing overview from CLI search URL
     basic_listings = scrape_search_results(search_url=args.url, headful=args.headful)
@@ -259,8 +287,8 @@ def main():
     
     # 3. Export to CSV
     df = pd.DataFrame(full_listings)
-    df.to_csv(args.output, index=False, encoding="utf-8-sig")
-    print(f"[✓] Successfully wrote {len(df)} records to '{args.output}'.\n")
+    df.to_csv(target_filepath, index=False, encoding="utf-8-sig")
+    print(f"[✓] Successfully wrote {len(df)} records to '{target_filepath}'.\n")
     
     print("--- Summary Sample (First 5 records) ---")
     print(df[["name", "rent", "available_from", "walking_distance", "walking_time"]].head(5).to_string(index=False))

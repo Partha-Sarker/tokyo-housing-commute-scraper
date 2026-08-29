@@ -7,6 +7,7 @@ Automated scraper for housing rent listings from [Xross House](https://x-house.c
 ## Features
 
 - **CLI Search URL Input**: Pass any custom Xross House filter or search URL via `--url`.
+- **Configurable Output Directory & Filename**: Save outputs to custom directories and names via `--dir` and `--name`.
 - **2-Step Scraping Pipeline**:
   1. Scrapes listing search results (names, rent, availability dates, detail URLs).
   2. Visits each individual property page to extract Google Maps query links.
@@ -15,7 +16,7 @@ Automated scraper for housing rent listings from [Xross House](https://x-house.c
   - Queries OSRM Foot Routing to compute precise pedestrian walking route distance and travel duration to **Rakuten Crimson House** (`35.6104929, 139.6301311`).
   - Generates clickable Google Maps Walking Directions URLs.
 - **Headful & Headless Modes**: Run silently in the background or launch a visible browser window with `--headful` to watch the scraping process live.
-- **CSV Export**: Outputs clean, structured data in UTF-8 format (`listings.csv`).
+- **CSV Export**: Outputs clean, structured data in UTF-8 format (`data/listings.csv`).
 
 ---
 
@@ -62,19 +63,28 @@ Activate your virtual environment:
 source venv/bin/activate
 ```
 
-### 1. Standard Scrape with Custom URL
+### 1. Standard Run (Saves to `data/listings.csv`)
 ```bash
-python scraper.py --url "https://x-house.co.jp/en/fee/?rent_min=&rent_max=&gender=no-female&city=%2C67..."
+python scraper.py
 ```
 
-### 2. Headful Mode (Visualize browser actions on screen)
+### 2. Specify Custom Directory & File Name
 ```bash
-python scraper.py --url "https://x-house.co.jp/en/fee/..." --headful
+# Saves to data/setagaya_september.csv
+python scraper.py --name setagaya_september
+
+# Saves to custom_folder/results.csv
+python scraper.py --dir custom_folder --name results.csv
 ```
 
-### 3. Specify Custom CSV Output Path
+### 3. Custom Search URL
 ```bash
-python scraper.py --output my_results.csv
+python scraper.py --url "https://x-house.co.jp/en/fee/?rent_min=&rent_max=&gender=no-female&city=%2C67..." --name setagaya_rent
+```
+
+### 4. Headful Mode (Visualize browser actions on screen)
+```bash
+python scraper.py --headful --name test_scrape
 ```
 
 ---
@@ -86,5 +96,7 @@ options:
   -h, --help           Show help message and exit
   --url, -u URL        Target Xross House search URL to scrape (default: predefined search URL)
   --headful            Launch visible browser window to watch scraping in real-time
-  --output, -o OUTPUT  Target CSV file path (default: listings.csv)
+  --dir, -d DIR        Directory to save the output CSV (default: data)
+  --name, -n NAME      Filename for the output CSV (default: listings.csv)
+  --output, -o OUTPUT  Optional full output path (overrides --dir and --name)
 ```
