@@ -1,5 +1,7 @@
 import argparse
 import os
+import random
+import re
 import time
 import urllib.parse
 import pandas as pd
@@ -18,6 +20,21 @@ DEFAULT_SEARCH_URL = (
 RAKUTEN_LON = 139.6301311
 RAKUTEN_LAT = 35.6104929
 RAKUTEN_DEST_STR = "35.6104929,139.6301311"
+
+DEFAULT_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,ja;q=0.8",
+    "Referer": "https://x-house.co.jp/en/",
+    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"macOS"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1"
+}
 
 
 def calculate_walking_route(address: str, session: requests.Session):
@@ -57,7 +74,7 @@ def calculate_walking_route(address: str, session: requests.Session):
 
 def scrape_search_results(search_url: str, headful: bool = False, max_retries: int = 3):
     """
-    Step 1: Scrape search results list to get basic info and detail URLs.
+    Step 1: Scrape all listing search results with infinite scroll support.
     """
     print(f"[*] Step 1: Fetching listing search results (Headful: {headful})...")
     print(f"[*] Search URL: {search_url}")
@@ -69,7 +86,7 @@ def scrape_search_results(search_url: str, headful: bool = False, max_retries: i
             args=["--disable-blink-features=AutomationControlled"]
         )
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent=DEFAULT_HEADERS["User-Agent"]
         )
         page = context.new_page()
         
@@ -77,8 +94,7 @@ def scrape_search_results(search_url: str, headful: bool = False, max_retries: i
             try:
                 print(f"[*] Navigating to search URL (Attempt {attempt}/{max_retries})...")
                 page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_selector("article.c-property-card", timeout=30000)
-                time.sleep(2)
+                page.wait_for_selector(".result-property-count", timeout=30000)
                 break
             except Exception as e:
                 if attempt == max_retries:
@@ -86,6 +102,37 @@ def scrape_search_results(search_url: str, headful: bool = False, max_retries: i
                     raise e
                 print(f"  [!] Timeout/Error, retrying in 3 seconds... ({e})")
                 time.sleep(3)
+        
+        # Read total count reported by header
+        count_raw = page.inner_text(".result-property-count").strip()
+        digits = re.findall(r"\d+", count_raw)
+        expected_total = int(digits[0]) if digits else 0
+        print(f"[*] Total properties available according to portal: {expected_total}")
+        
+        # Scroll down progressively to load all batched cards
+        print("[*] Scrolling to load all paginated results...")
+        max_scroll_attempts = 30
+        prev_count = -1
+        unchanged_count = 0
+        
+        for scroll_idx in range(1, max_scroll_attempts + 1):
+            current_cards = len(page.query_selector_all("article.c-property-card"))
+            
+            if expected_total > 0 and current_cards >= expected_total:
+                print(f"  [✓] All {current_cards}/{expected_total} listings loaded into DOM.")
+                break
+                
+            if current_cards == prev_count:
+                unchanged_count += 1
+                if unchanged_count >= 3 and current_cards > 0:
+                    print(f"  [*] Reached end of scrollable results ({current_cards} items).")
+                    break
+            else:
+                unchanged_count = 0
+                
+            prev_count = current_cards
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(1.5)
         
         print("[*] Extracting property cards...")
         results = page.evaluate("""() => {
@@ -113,33 +160,57 @@ def scrape_search_results(search_url: str, headful: bool = False, max_retries: i
         }""")
         browser.close()
         
-    print(f"[✓] Step 1 Complete: Found {len(results)} listings.\n")
+    print(f"[✓] Step 1 Complete: Successfully extracted {len(results)} listings.\n")
     return results
 
 
-def enrich_with_details_and_distance(listings: list, headful: bool = False):
+def fetch_detail_page_with_retry(session: requests.Session, url: str, max_retries: int = 3, base_delay: float = 1.5):
     """
-    Step 2: Visit each property detail page to extract Google Maps URL and calculate walking distance to Rakuten Main Office.
+    Fetches a property detail page with exponential backoff on 429/403/timeout.
     """
-    print(f"[*] Step 2: Extracting Maps URL & calculating walking distance to Rakuten Crimson House...")
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = session.get(url, timeout=20)
+            if resp.status_code == 200:
+                return resp.text
+            elif resp.status_code in [429, 403]:
+                wait_time = base_delay * (2 ** attempt) + random.uniform(1.0, 3.0)
+                print(f"    [!] Rate limit/HTTP {resp.status_code} on {url}. Backing off for {wait_time:.1f}s (Attempt {attempt}/{max_retries})...")
+                time.sleep(wait_time)
+            else:
+                print(f"    [!] HTTP {resp.status_code} on {url} (Attempt {attempt}/{max_retries})")
+                time.sleep(base_delay)
+        except Exception as e:
+            wait_time = base_delay * attempt
+            print(f"    [!] Connection error: {e}. Retrying in {wait_time:.1f}s...")
+            time.sleep(wait_time)
+    return None
+
+
+def enrich_with_details_and_distance(listings: list, headful: bool = False, delay: float = 1.5):
+    """
+    Step 2: Visit each property detail page with configurable polite delay to avoid rate limiting.
+    """
+    print(f"[*] Step 2: Extracting Maps URLs & calculating walking distances (Delay between requests: {delay}s)...")
     
     enriched = []
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)"
-    })
+    session.headers.update(DEFAULT_HEADERS)
     
     if headful:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False, slow_mo=200)
+            browser = p.chromium.launch(headless=False, slow_mo=150)
             page = browser.new_page()
             
             for i, item in enumerate(listings, 1):
                 url = item["detail_url"]
                 print(f"  [{i:02d}/{len(listings)}] Visiting: {item['name']}")
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                time.sleep(0.5)
                 
+                # Polite randomized delay between page navigations
+                sleep_duration = max(0.5, delay + random.uniform(-0.3, 0.5))
+                time.sleep(sleep_duration)
+                
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 content = page.content()
                 soup = BeautifulSoup(content, "html.parser")
                 
@@ -177,9 +248,14 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False):
         for i, item in enumerate(listings, 1):
             url = item["detail_url"]
             print(f"  [{i:02d}/{len(listings)}] Processing: {item['name']}")
-            try:
-                resp = session.get(url, timeout=15)
-                soup = BeautifulSoup(resp.text, "html.parser")
+            
+            # Polite randomized delay between page requests
+            sleep_duration = max(0.5, delay + random.uniform(-0.2, 0.4))
+            time.sleep(sleep_duration)
+            
+            html_text = fetch_detail_page_with_retry(session, url, max_retries=3, base_delay=delay)
+            if html_text:
+                soup = BeautifulSoup(html_text, "html.parser")
                 
                 iframe = soup.find("iframe", src=lambda s: s and "maps.google" in s)
                 jp_address = ""
@@ -210,8 +286,8 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False):
                     "google_map_walking_url": walk_dir_url,
                     "detail_url": url
                 })
-            except Exception as err:
-                print(f"  [!] Error fetching {url}: {err}")
+            else:
+                print(f"  [!] Failed to load detail page for: {item['name']}")
                 enriched.append({
                     "name": item["name"],
                     "rent": item["rent"],
@@ -222,7 +298,6 @@ def enrich_with_details_and_distance(listings: list, headful: bool = False):
                     "google_map_walking_url": "",
                     "detail_url": url
                 })
-            time.sleep(0.1)
                 
     print(f"\n[✓] Step 2 Complete: Enriched all {len(enriched)} listings.\n")
     return enriched
@@ -261,6 +336,12 @@ def main():
         help="Launch visible browser window to watch scraping in real-time."
     )
     parser.add_argument(
+        "--delay", "-w",
+        type=float,
+        default=1.5,
+        help="Polite delay in seconds between detail page requests to avoid rate limits."
+    )
+    parser.add_argument(
         "--dir", "-d",
         default="data",
         help="Directory to save the output CSV."
@@ -279,11 +360,15 @@ def main():
     
     target_filepath = resolve_output_path(args.dir, args.name, args.output)
     
-    # 1. Scrape listing overview from CLI search URL
+    # 1. Scrape listing overview from CLI search URL with infinite scroll
     basic_listings = scrape_search_results(search_url=args.url, headful=args.headful)
     
     # 2. Enrich with detail pages, Google Maps URLs, and walking distances
-    full_listings = enrich_with_details_and_distance(basic_listings, headful=args.headful)
+    full_listings = enrich_with_details_and_distance(
+        basic_listings, 
+        headful=args.headful, 
+        delay=args.delay
+    )
     
     # 3. Export to CSV
     df = pd.DataFrame(full_listings)
