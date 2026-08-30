@@ -10,13 +10,6 @@ import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
-DEFAULT_SEARCH_URL = (
-    "https://x-house.co.jp/en/fee/?rent_min=&rent_max=&gender=no-female&date="
-    "&sort=room&vacant_room_flg=1&room_type=%2C5&walk=&station=&city=%2C67"
-    "&closest_station_name%5B%5D=&closest_station_distance%5B%5D=30"
-    "&closest_station_transfer%5B%5D=&keyword=&campaign=&facility="
-)
-
 # Rakuten Crimson House (Futako-Tamagawa, Tokyo)
 RAKUTEN_LON = 139.6301311
 RAKUTEN_LAT = 35.6104929
@@ -341,8 +334,8 @@ def main():
     )
     parser.add_argument(
         "--url", "-u",
-        default=DEFAULT_SEARCH_URL,
-        help="Target Xross House search URL to scrape."
+        required=True,
+        help="Target Xross House search/filter URL to scrape (required)."
     )
     parser.add_argument(
         "--headful",

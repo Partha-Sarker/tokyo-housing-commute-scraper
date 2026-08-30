@@ -10,12 +10,11 @@ An automated Python scraper for housing rent listings from [Xross House](https:/
 - [Installation & Setup](#installation--setup)
 - [CLI Arguments Reference](#cli-arguments-reference)
 - [Usage Examples](#usage-examples)
-  - [1. Default Run](#1-default-run)
-  - [2. Custom Search / Filter URL](#2-custom-search--filter-url)
-  - [3. Custom Output Directory & Filename (with Timestamps)](#3-custom-output-directory--filename-with-timestamps)
-  - [4. Adjust Delay to Avoid Rate Limits](#4-adjust-delay-to-avoid-rate-limits)
-  - [5. Visual / Headful Mode](#5-visual--headful-mode)
-  - [6. Full Pipeline with Combined Arguments](#6-full-pipeline-with-combined-arguments)
+  - [1. Standard Run](#1-standard-run)
+  - [2. Custom Output Directory & Filename](#2-custom-output-directory--filename)
+  - [3. Adjust Delay to Avoid Rate Limits](#3-adjust-delay-to-avoid-rate-limits)
+  - [4. Visual / Headful Mode](#4-visual--headful-mode)
+  - [5. Full Pipeline with Combined Arguments](#5-full-pipeline-with-combined-arguments)
 - [Output CSV Data Schema](#output-csv-data-schema)
 - [How It Works](#how-it-works)
 
@@ -23,10 +22,10 @@ An automated Python scraper for housing rent listings from [Xross House](https:/
 
 ## Features
 
+- **Dynamic Search URL**: Provide any search or filter URL from Xross House via `--url` (required).
 - **Automatic Timestamp Suffixes**: Filenames are automatically suffixed with readable timestamps (e.g. `data/setagaya_2026-08-29_23-18-01.csv`) so previous scrape runs are never overwritten.
 - **Automatic Infinite Scroll & Pagination**: Automatically scrolls and loads 100% of available listings, matching the total count reported by the portal.
 - **Polite Crawling & Anti-Blocking**: Built-in polite delay (`--delay`) and exponential backoff retry logic on `429`/`403` or network timeouts.
-- **Custom Search URLs**: Pass any search or filter URL from Xross House via `--url`.
 - **2-Step Scraping Pipeline**:
   1. Scrapes listing search results (names, rent, availability dates, detail URLs).
   2. Visits each individual property page to extract building addresses and Google Maps links.
@@ -60,16 +59,16 @@ playwright install chromium
 
 ## CLI Arguments Reference
 
-| Argument | Shorthand | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `--url` | `-u` | *Default Setagaya search URL* | Target Xross House search/filter URL to scrape. |
-| `--name` | `-n` | `listings` | Base filename for the output CSV (e.g. `setagaya` or `listings`). Readable timestamp will be appended before `.csv`. |
-| `--dir` | `-d` | `data` | Directory where the CSV file will be saved. Automatically created if it does not exist. |
-| `--no-timestamp` | | `False` | Disable appending timestamp suffix to output filename (e.g. to keep static name). |
-| `--delay` | `-w` | `1.5` | Polite delay in seconds between detail page requests (with random jitter) to avoid rate limits. |
-| `--output` | `-o` | `None` | Optional explicit full output path (e.g. `reports/custom.csv`). Overrides `--dir` and `--name`. |
-| `--headful` | | `False` | Launches a visible Chromium browser window so you can watch the scraper live. |
-| `--help` | `-h` | | Displays the help message with all available options. |
+| Argument | Shorthand | Required | Default | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `--url` | `-u` | **Yes** | — | Target Xross House search/filter URL to scrape. |
+| `--name` | `-n` | No | `listings` | Base filename for output CSV (e.g. `setagaya`). Readable timestamp will be appended before `.csv`. |
+| `--dir` | `-d` | No | `data` | Directory where the CSV file will be saved. Automatically created if it does not exist. |
+| `--no-timestamp` | | No | `False` | Disable appending timestamp suffix to output filename (e.g. to keep static name). |
+| `--delay` | `-w` | No | `1.5` | Polite delay in seconds between detail page requests (with random jitter) to avoid rate limits. |
+| `--output` | `-o` | No | `None` | Optional explicit full output path (e.g. `reports/custom.csv`). Overrides `--dir` and `--name`. |
+| `--headful` | | No | `False` | Launches a visible Chromium browser window so you can watch the scraper live. |
+| `--help` | `-h` | No | | Displays the help message with all available options. |
 
 ---
 
@@ -80,45 +79,37 @@ Make sure your virtual environment is active before running commands:
 source venv/bin/activate
 ```
 
-### 1. Default Run
-Scrapes the default search URL and saves to `data/listings_YYYY-MM-DD_HH-MM-SS.csv`:
+### 1. Standard Run
+Scrapes the specified search URL and saves to `data/listings_YYYY-MM-DD_HH-MM-SS.csv`:
 ```bash
-python scraper.py
+python scraper.py --url "https://x-house.co.jp/en/fee/?rent_min=&rent_max=80000&gender=no-female&city=%2C67%2C66"
 ```
 
 ### 2. Custom Output Directory & Filename
 ```bash
 # Saves to data/setagaya_under_80k_YYYY-MM-DD_HH-MM-SS.csv
-python scraper.py --name setagaya_under_80k
+python scraper.py --url "https://x-house.co.jp/en/fee/..." --name setagaya_under_80k
 
 # Saves to reports/august_search_YYYY-MM-DD_HH-MM-SS.csv (creates reports/ folder automatically)
-python scraper.py --dir reports --name august_search
+python scraper.py --url "https://x-house.co.jp/en/fee/..." --dir reports --name august_search
 
 # Disable timestamp suffix if you prefer a static filename (data/listings.csv):
-python scraper.py --no-timestamp
+python scraper.py --url "https://x-house.co.jp/en/fee/..." --no-timestamp
 ```
 
-### 3. Custom Search / Filter URL
-Pass any custom filter URL (e.g. multi-city search, budget filters, specific stations):
-```bash
-python scraper.py \
-  --url "https://x-house.co.jp/en/fee/?rent_min=&rent_max=80000&gender=no-female&city=%2C67%2C66%2C59..." \
-  --name multi_city_search
-```
-
-### 4. Adjust Delay to Avoid Rate Limits
+### 3. Adjust Delay to Avoid Rate Limits
 Customize the wait time between individual property page requests:
 ```bash
-python scraper.py --delay 2.0
+python scraper.py --url "https://x-house.co.jp/en/fee/..." --delay 2.0
 ```
 
-### 5. Visual / Headful Mode
+### 4. Visual / Headful Mode
 Launch a visible browser window on your desktop to observe page loading and interactions in real time:
 ```bash
-python scraper.py --headful
+python scraper.py --url "https://x-house.co.jp/en/fee/..." --headful
 ```
 
-### 6. Full Pipeline with Combined Arguments
+### 5. Full Pipeline with Combined Arguments
 Combine search URL, custom delay, output directory, custom name, and headful mode:
 ```bash
 python scraper.py \
